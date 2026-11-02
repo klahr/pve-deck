@@ -1,0 +1,18 @@
+# Build output
+RPMS/
+*.o
+*.a
+*.so
+moc_*
+qrc_*
+*.qm
+Makefile*
+.qmake.stash
+/app/pvedeck
+/tests/*/tst_*
+!/tests/*/*.cpp
+!/tests/*/*.pro
+target_wrapper.sh
+*.pro.user*
+# Generated engineering-English translation
+/app/translations/pvedeck.ts

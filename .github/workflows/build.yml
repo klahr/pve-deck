@@ -1,0 +1,32 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+
+env:
+  SFOS_VERSION: 4.5.0.16
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, armv7hl, i486]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build RPM
+        run: |
+          docker run --rm \
+            -v "$PWD:/home/mersdk/src" -w /home/mersdk/src \
+            coderus/sailfishos-platform-sdk-${{ matrix.arch }}:${SFOS_VERSION} \
+            bash -c "sudo chown -R mersdk:mersdk /home/mersdk/src && mb2 -t SailfishOS-${SFOS_VERSION}-${{ matrix.arch }} build"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-${{ matrix.arch }}
+          path: RPMS/*.rpm
