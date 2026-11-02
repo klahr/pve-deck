@@ -9,7 +9,7 @@ Page {
 
     property string profileId
     readonly property var profile: serverStore.get(profileId)
-    readonly property PveClient client: sessionManager.client(profileId)
+    readonly property QtObject client: sessionManager.client(profileId)
 
     // Leave the page if the session ends.
     Connections {

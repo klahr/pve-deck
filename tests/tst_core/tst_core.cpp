@@ -246,7 +246,7 @@ private slots:
     void serverStoreRoundTrip()
     {
         QTemporaryDir dir;
-        const QString path = dir.filePath(QStringLiteral("servers.ini"));
+        const QString path = dir.path() + QStringLiteral("/servers.ini");
         QString id;
         {
             ServerStore store(new QSettings(path, QSettings::IniFormat));
@@ -272,7 +272,7 @@ private slots:
     void serverStoreKeepsFingerprintUnlessHostChanges()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         QVariantMap data;
         data.insert(QStringLiteral("host"), QStringLiteral("pve.lan"));
         const QString id = store.add(data);
@@ -290,7 +290,7 @@ private slots:
     void serverStoreRejectsInvalid()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         QVERIFY(store.add(QVariantMap()).isEmpty());
         QVariantMap token;
         token.insert(QStringLiteral("host"), QStringLiteral("pve.lan"));
@@ -463,7 +463,7 @@ private slots:
     void sessionManagerRemembersSecretAfterSuccess()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         MemorySecretBackend secrets;
         SessionManager manager(&store, &secrets);
         manager.setTlsEnabled(false);
@@ -499,7 +499,7 @@ private slots:
     void sessionManagerForgetsRejectedStoredSecret()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         MemorySecretBackend secrets;
         SessionManager manager(&store, &secrets);
         manager.setTlsEnabled(false);
@@ -516,7 +516,7 @@ private slots:
     void sessionManagerTfaAndNoRemember()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         MemorySecretBackend secrets;
         SessionManager manager(&store, &secrets);
         manager.setTlsEnabled(false);
@@ -536,7 +536,7 @@ private slots:
     void sessionManagerTfaChallengeAndLastMethod()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         MemorySecretBackend secrets;
         SessionManager manager(&store, &secrets);
         manager.setTlsEnabled(false);
@@ -569,7 +569,7 @@ private slots:
     void sessionManagerSeveralSessions()
     {
         QTemporaryDir dir;
-        ServerStore store(new QSettings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat));
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
         MemorySecretBackend secrets;
         SessionManager manager(&store, &secrets);
         manager.setTlsEnabled(false);

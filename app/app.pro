@@ -1,6 +1,6 @@
 TARGET = pvedeck
 
-CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased c++11 link_pkgconfig
+CONFIG += link_pkgconfig sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished c++11
 QT += network qml
 PKGCONFIG += sailfishsecrets
 
@@ -31,4 +31,4 @@ DISTFILES += \
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172
 
-TRANSLATIONS += translations/pvedeck-sv.ts
+TRANSLATIONS += translations/pvedeck.ts translations/pvedeck-sv.ts

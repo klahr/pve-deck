@@ -16,7 +16,7 @@ private slots:
 
     void emptyVersionFallsBack()
     {
-        AppInfo info(QString());
+        AppInfo info((QString()));
         QCOMPARE(info.version(), QStringLiteral("0.0.0"));
     }
 };

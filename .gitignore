@@ -16,3 +16,5 @@ target_wrapper.sh
 *.pro.user*
 # Generated engineering-English translation
 /app/translations/pvedeck.ts
+/tests/*/moc_*
+documentation.list

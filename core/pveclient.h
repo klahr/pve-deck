@@ -63,6 +63,7 @@ public:
         bool certificateUntrusted = false;
     };
     typedef std::function<void(const Reply &)> Callback;
+    typedef Pve::FormFields FormFields;
 
     explicit PveClient(QObject *parent = nullptr);
     ~PveClient();
