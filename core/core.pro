@@ -4,6 +4,7 @@ TEMPLATE = lib
 CONFIG += staticlib c++11
 TARGET = pvedeckcore
 QT = core network qml
+INCLUDEPATH += ../3rdparty/libvterm/include
 
 HEADERS += \
     appinfo.h \
@@ -17,6 +18,15 @@ HEADERS += \
     resourcemodel.h \
     resourcefiltermodel.h \
     guestdetails.h \
+    taskwatcher.h \
+    poweractions.h \
+    websocketclient.h \
+    consoleprotocol.h \
+    terminalbackend.h \
+    pveconsolesession.h \
+    terminalscreen.h \
+    clusteroverview.h \
+    rrdhistory.h \
     tfachallenge.h
 
 SOURCES += \
@@ -30,4 +40,12 @@ SOURCES += \
     resourcemodel.cpp \
     resourcefiltermodel.cpp \
     guestdetails.cpp \
+    taskwatcher.cpp \
+    poweractions.cpp \
+    websocketclient.cpp \
+    consoleprotocol.cpp \
+    pveconsolesession.cpp \
+    terminalscreen.cpp \
+    clusteroverview.cpp \
+    rrdhistory.cpp \
     tfachallenge.cpp

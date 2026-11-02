@@ -17,6 +17,9 @@ bool lessThan(const ResourceModel::Guest &a, const ResourceModel::Guest &b)
     return a.vmid < b.vmid;
 }
 
+// How long a status set by overrideStatus() can disagree with the cluster.
+const qint64 OverrideMs = 30000;
+
 qint64 toInt64(const QJsonValue &v)
 {
     return static_cast<qint64>(v.toDouble());
@@ -40,8 +43,10 @@ ResourceModel::ResourceModel(PveClient *client, QObject *parent)
     connect(&m_timer, &QTimer::timeout, this, &ResourceModel::refresh);
     if (client) {
         connect(client, &PveClient::stateChanged, this, &ResourceModel::onClientStateChanged);
-        if (client->isConnected())
+        if (client->isConnected()) {
             refresh();
+            fetchTagColors();
+        }
     }
 }
 
@@ -140,6 +145,50 @@ void ResourceModel::setPollInterval(int ms)
     emit pollIntervalChanged();
 }
 
+QVariantMap ResourceModel::tagColors() const
+{
+    return m_tagColors;
+}
+
+QVariantMap ResourceModel::parseTagColors(const QJsonValue &tagStyle)
+{
+    QString colorMap;
+    if (tagStyle.isObject()) {
+        colorMap = tagStyle.toObject().value(QStringLiteral("color-map")).toString();
+    } else {
+        foreach (const QString &part, tagStyle.toString().split(QLatin1Char(','))) {
+            if (part.startsWith(QLatin1String("color-map=")))
+                colorMap = part.mid(10);
+        }
+    }
+    QVariantMap colors;
+    static const QRegExp hex(QStringLiteral("[0-9a-fA-F]{6}"));
+    foreach (const QString &entry, colorMap.split(QLatin1Char(';'), QString::SkipEmptyParts)) {
+        const QStringList fields = entry.split(QLatin1Char(':'));
+        if (fields.size() >= 2 && !fields.at(0).isEmpty() && hex.exactMatch(fields.at(1)))
+            colors.insert(fields.at(0), QLatin1Char('#') + fields.at(1).toLower());
+    }
+    return colors;
+}
+
+void ResourceModel::fetchTagColors()
+{
+    if (!m_client || !m_client->isConnected())
+        return;
+    const int generation = m_generation;
+    QPointer<ResourceModel> self(this);
+    // Needs Sys.Audit; without it every tag gets its computed colour.
+    m_client->get(QStringLiteral("/cluster/options"), [self, generation](const PveClient::Reply &reply) {
+        if (!self || generation != self->m_generation || !reply.ok)
+            return;
+        const QVariantMap colors = parseTagColors(reply.data.toObject().value(QStringLiteral("tag-style")));
+        if (colors == self->m_tagColors)
+            return;
+        self->m_tagColors = colors;
+        emit self->tagColorsChanged();
+    });
+}
+
 void ResourceModel::refresh()
 {
     if (!m_client || !m_client->isConnected() || m_loading)
@@ -207,6 +256,16 @@ void ResourceModel::update(const QJsonArray &resources)
             continue;
         next.append(parseGuest(o));
     }
+    for (int k = 0; k < next.size(); ++k) {
+        Guest &g = next[k];
+        if (!m_overrides.contains(g.vmid))
+            continue;
+        const Override &o = m_overrides.value(g.vmid);
+        if (g.status == o.status || o.age.elapsed() > OverrideMs)
+            m_overrides.remove(g.vmid);
+        else
+            applyStatus(g, o.status);
+    }
     std::sort(next.begin(), next.end(), lessThan);
 
     const int oldCount = m_guests.size();
@@ -235,6 +294,45 @@ void ResourceModel::update(const QJsonArray &resources)
         }
     }
 
+    recount();
+    if (m_guests.size() != oldCount)
+        emit countChanged();
+    if (!m_loaded) {
+        m_loaded = true;
+        emit loadedChanged();
+    }
+}
+
+void ResourceModel::overrideStatus(int vmid, const QString &status)
+{
+    if (status.isEmpty())
+        return;
+    Override o;
+    o.status = status;
+    o.age.start();
+    m_overrides.insert(vmid, o);
+    for (int i = 0; i < m_guests.size(); ++i) {
+        if (m_guests.at(i).vmid != vmid || m_guests.at(i).status == status)
+            continue;
+        applyStatus(m_guests[i], status);
+        emit dataChanged(index(i), index(i));
+    }
+    recount();
+}
+
+void ResourceModel::applyStatus(Guest &guest, const QString &status)
+{
+    guest.status = status;
+    // A guest that is not running uses nothing.
+    if (status != QLatin1String("running")) {
+        guest.cpu = 0;
+        guest.mem = 0;
+        guest.uptime = 0;
+    }
+}
+
+void ResourceModel::recount()
+{
     int running = 0;
     int stopped = 0;
     foreach (const Guest &g, m_guests) {
@@ -245,23 +343,21 @@ void ResourceModel::update(const QJsonArray &resources)
         else if (g.status == QLatin1String("stopped"))
             ++stopped;
     }
-    const bool countsDiffer = running != m_running || stopped != m_stopped;
+    if (running == m_running && stopped == m_stopped)
+        return;
     m_running = running;
     m_stopped = stopped;
-
-    if (m_guests.size() != oldCount)
-        emit countChanged();
-    if (countsDiffer)
-        emit countsChanged();
-    if (!m_loaded) {
-        m_loaded = true;
-        emit loadedChanged();
-    }
+    emit countsChanged();
 }
 
 void ResourceModel::clear()
 {
     ++m_generation;
+    m_overrides.clear();
+    if (!m_tagColors.isEmpty()) {
+        m_tagColors.clear();
+        emit tagColorsChanged();
+    }
     setLoading(false);
     setErrorString(QString());
 
@@ -288,6 +384,8 @@ void ResourceModel::onClientStateChanged()
 {
     if (m_client && m_client->isConnected()) {
         refresh();
+        if (m_tagColors.isEmpty())
+            fetchTagColors();
     } else {
         clear();
     }

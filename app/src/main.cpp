@@ -11,13 +11,19 @@
 #include <sailfishapp.h>
 
 #include "appinfo.h"
+#include "clusteroverview.h"
 #include "guestdetails.h"
+#include "linechart.h"
+#include "poweractions.h"
+#include "pveconsolesession.h"
 #include "pveclient.h"
 #include "resourcefiltermodel.h"
 #include "resourcemodel.h"
+#include "rrdhistory.h"
 #include "sailfishsecretbackend.h"
 #include "serverstore.h"
 #include "sessionmanager.h"
+#include "terminalitem.h"
 
 int main(int argc, char *argv[])
 {
@@ -33,6 +39,13 @@ int main(int argc, char *argv[])
                                               QStringLiteral("Get resources from sessionManager.resources()"));
     qmlRegisterType<ResourceFilterModel>("PveDeck", 1, 0, "ResourceFilterModel");
     qmlRegisterType<GuestDetails>("PveDeck", 1, 0, "GuestDetails");
+    qmlRegisterType<ClusterOverview>("PveDeck", 1, 0, "ClusterOverview");
+    qmlRegisterType<RrdHistory>("PveDeck", 1, 0, "RrdHistory");
+    qmlRegisterType<LineChart>("PveDeck", 1, 0, "LineChart");
+    qmlRegisterUncreatableType<TerminalBackend>("PveDeck", 1, 0, "TerminalBackend",
+                                                QStringLiteral("Use PveConsoleSession"));
+    qmlRegisterType<PveConsoleSession>("PveDeck", 1, 0, "PveConsoleSession");
+    qmlRegisterType<TerminalItem>("PveDeck", 1, 0, "TerminalItem");
 
     AppInfo appInfo(QStringLiteral(APP_VERSION));
     // Sailjail only allows writing inside ~/.config/<org>/<app>/, not the
@@ -42,12 +55,14 @@ int main(int argc, char *argv[])
             + QStringLiteral("/pvedeck.conf"), QSettings::NativeFormat));
     SailfishSecretBackend secrets;
     SessionManager sessionManager(&serverStore, &secrets);
+    PowerActions powerActions(&sessionManager);
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     QQmlContext *context = view->rootContext();
     context->setContextProperty(QStringLiteral("appInfo"), &appInfo);
     context->setContextProperty(QStringLiteral("serverStore"), &serverStore);
     context->setContextProperty(QStringLiteral("sessionManager"), &sessionManager);
+    context->setContextProperty(QStringLiteral("powerActions"), &powerActions);
     view->setSource(SailfishApp::pathToMainQml());
     view->show();
 

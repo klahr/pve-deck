@@ -16,6 +16,8 @@ class ResourceFilterModel : public QSortFilterProxyModel
     // Matches name, vmid, node and tags, case-insensitively.
     Q_PROPERTY(QString searchText READ searchText WRITE setSearchText NOTIFY searchTextChanged)
     Q_PROPERTY(Show show READ show WRITE setShow NOTIFY showChanged)
+    // Only the guests on this node; empty for all nodes.
+    Q_PROPERTY(QString node READ node WRITE setNode NOTIFY nodeChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
@@ -36,6 +38,8 @@ public:
     void setSearchText(const QString &text);
     Show show() const;
     void setShow(Show show);
+    QString node() const;
+    void setNode(const QString &node);
     int count() const;
 
     Q_INVOKABLE QVariantMap get(int row) const;
@@ -44,6 +48,7 @@ signals:
     void resourcesChanged();
     void searchTextChanged();
     void showChanged();
+    void nodeChanged();
     void countChanged();
 
 protected:
@@ -53,6 +58,7 @@ private:
     QPointer<ResourceModel> m_resources;
     QString m_searchText;
     Show m_show = ShowAll;
+    QString m_node;
 };
 
 #endif // PVEDECK_RESOURCEFILTERMODEL_H

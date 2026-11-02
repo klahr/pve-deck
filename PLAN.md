@@ -19,7 +19,7 @@ Distribution: **OpenRepos** (and Chum). Package name `pvedeck`. There's no Harbo
 | Language | C++ (Qt 5.6) + QML | Sailfish OS 4.x/5.x ships Qt 5.6; Silica is QML-only |
 | UI | Sailfish Silica | Native look, pulley menus, RemorsePopup for destructive actions |
 | HTTP | `QNetworkAccessManager` | Built in, handles cookies and TLS |
-| WebSocket | `QWebSocket` (QtWebSockets, `Requires: qt5-qtwebsockets`) | For the Proxmox console |
+| WebSocket | Own minimal RFC 6455 client on `QSslSocket` (`WebSocketClient`) | For the Proxmox console. QtWebSockets 5.5, the version Sailfish OS ships, cannot send request headers, so it can't pass the `PVEAuthCookie` or API token |
 | SSH | **libssh** (LGPL), bundled as a shared library in `/usr/share/pvedeck/lib` | SSH into VMs (and optionally nodes). Shares the same terminal widget |
 | Terminal emulation | **libvterm** (MIT), linked statically | Clean "feed bytes in, read cells out" API with no pty dependency. Better fit than fingerterm (GPL, tied to a pty) or qmltermwidget (Konsole-based, pty-centric) |
 | Terminal rendering | Custom `QQuickPaintedItem` (move to a `QSGNode` later if it's slow) | Full control over fonts, colours, selection and pinch-zoom |
@@ -129,7 +129,7 @@ C++ core
   ├─ ResourceFilterModel– QSortFilterProxyModel: search, type, status, node, tags
   ├─ TaskWatcher        – polls UPIDs, emits finished(ok, message)
   ├─ TerminalBackend    – interface: write(bytes), resize(cols,rows), signal dataReceived
-  │   ├─ PveConsoleSession – termproxy call + QWebSocket + protocol framing + reconnect
+  │   ├─ PveConsoleSession – termproxy call + WebSocketClient + protocol framing + reconnect
   │   └─ SshSession        – libssh on a worker thread: connect, host-key check, auth, PTY shell
   ├─ VTerm (libvterm)   – screen buffer, scrollback, damage callbacks
   └─ TerminalItem       – QQuickPaintedItem: draw cells, cursor, selection, pinch-zoom,

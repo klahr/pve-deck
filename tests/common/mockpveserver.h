@@ -46,6 +46,8 @@ public:
     };
 
     typedef std::function<Response(const Request &)> Handler;
+    // Takes over a connection that asks for "Upgrade: websocket".
+    typedef std::function<void(const Request &, QTcpSocket *)> UpgradeHandler;
 
     explicit MockPveServer(QObject *parent = nullptr) : QTcpServer(parent)
     {
@@ -54,6 +56,7 @@ public:
     }
 
     Handler handler;
+    UpgradeHandler upgradeHandler;
     QList<Request> requests;
 
     QList<Request> requestsTo(const QString &path) const
@@ -110,6 +113,13 @@ private:
             const int colon = line.indexOf(':');
             if (colon > 0)
                 req.headers.insert(line.left(colon).trimmed().toLower(), line.mid(colon + 1).trimmed());
+        }
+        if (upgradeHandler && req.headers.value("upgrade").toLower() == "websocket") {
+            requests.append(req);
+            socket->disconnect(this);
+            socket->setProperty("buffer", buffer.mid(headerEnd + 4));
+            upgradeHandler(req, socket);
+            return;
         }
         const int length = req.headers.value("content-length").toInt();
         if (buffer.size() < headerEnd + 4 + length)

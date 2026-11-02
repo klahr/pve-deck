@@ -58,6 +58,21 @@ void ResourceFilterModel::setShow(Show show)
     emit countChanged();
 }
 
+QString ResourceFilterModel::node() const
+{
+    return m_node;
+}
+
+void ResourceFilterModel::setNode(const QString &node)
+{
+    if (node == m_node)
+        return;
+    m_node = node;
+    invalidateFilter();
+    emit nodeChanged();
+    emit countChanged();
+}
+
 int ResourceFilterModel::count() const
 {
     return rowCount();
@@ -76,6 +91,8 @@ bool ResourceFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex &sou
     const QString status = idx.data(ResourceModel::StatusRole).toString();
     const QString type = idx.data(ResourceModel::TypeRole).toString();
     const bool isTemplate = idx.data(ResourceModel::TemplateRole).toBool();
+    if (!m_node.isEmpty() && idx.data(ResourceModel::NodeRole).toString() != m_node)
+        return false;
 
     switch (m_show) {
     case ShowAll:

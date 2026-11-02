@@ -64,6 +64,7 @@ public:
     };
     typedef std::function<void(const Reply &)> Callback;
     typedef Pve::FormFields FormFields;
+    typedef QList<QPair<QByteArray, QByteArray> > Headers;
 
     explicit PveClient(QObject *parent = nullptr);
     ~PveClient();
@@ -75,6 +76,11 @@ public:
 
     void setPinnedFingerprint(const QString &fingerprint);
     QString pinnedFingerprint() const;
+    bool isTlsEnabled() const;
+
+    // Headers that authenticate a GET made outside this class, such as
+    // the console WebSocket: the ticket cookie or the API token.
+    Headers authHeaders() const;
 
     // Timings, adjustable for tests. Defaults: renew after 90 min,
     // ticket lifetime 120 min.

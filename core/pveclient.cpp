@@ -72,6 +72,23 @@ QString PveClient::host() const
     return m_host;
 }
 
+bool PveClient::isTlsEnabled() const
+{
+    return m_tls;
+}
+
+PveClient::Headers PveClient::authHeaders() const
+{
+    Headers headers;
+    if (m_authMethod == TokenAuth)
+        headers.append(qMakePair(QByteArray("Authorization"),
+                                 "PVEAPIToken=" + m_userId.toUtf8() + '=' + m_tokenSecret.toUtf8()));
+    else if (!m_ticket.isEmpty())
+        headers.append(qMakePair(QByteArray("Cookie"),
+                                 "PVEAuthCookie=" + QUrl::toPercentEncoding(m_ticket)));
+    return headers;
+}
+
 QUrl PveClient::baseUrl() const
 {
     QUrl url;

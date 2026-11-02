@@ -7,6 +7,7 @@ import "../components"
 Page {
     id: page
 
+    readonly property bool needsSession: true
     property string profileId
     property string node
     property string type
@@ -16,22 +17,37 @@ Page {
     readonly property var info: details.status
     readonly property bool running: info.status === "running"
     readonly property bool isContainer: type === "lxc"
+    readonly property bool busy: powerActions.busyGuests.indexOf(profileId + "/" + vmid) >= 0
+    readonly property var actions: busy || !details.loaded
+                                   ? []
+                                   : powerActions.availableActions(type, info.status || "",
+                                                                   info.qmpstatus || "",
+                                                                   info.template === 1,
+                                                                   info.lock || "")
 
-    function formatUptime(seconds) {
-        var minutes = Math.floor(seconds / 60) % 60
-        var hours = Math.floor(seconds / 3600) % 24
-        var days = Math.floor(seconds / 86400)
-        if (days > 0)
-            //% "%1 d %2 h"
-            return qsTrId("pvedeck-la-uptime-days").arg(days).arg(hours)
-        if (hours > 0)
-            //% "%1 h %2 min"
-            return qsTrId("pvedeck-la-uptime-hours").arg(hours).arg(minutes)
-        //% "%1 min"
-        return qsTrId("pvedeck-la-uptime-minutes").arg(minutes)
+    function runAction(action) {
+        var label = page.info.name || page.name || String(page.vmid)
+        if (guestStatus.isDestructive(action)) {
+            remorse.execute(guestStatus.remorseText(action), function() {
+                powerActions.run(page.profileId, page.node, page.type, page.vmid, action, label)
+            })
+        } else {
+            powerActions.run(page.profileId, page.node, page.type, page.vmid, action, label)
+        }
     }
 
     GuestStatus { id: guestStatus }
+
+    RemorsePopup { id: remorse }
+
+    // Show the new state as soon as the task is done.
+    Connections {
+        target: powerActions
+        onFinished: {
+            if (profileId === page.profileId && vmid === page.vmid)
+                details.refresh()
+        }
+    }
 
     GuestDetails {
         id: details
@@ -43,15 +59,48 @@ Page {
                       && Qt.application.state === Qt.ApplicationActive ? 5000 : 0
     }
 
+    // Proxmox keeps one sample per minute for the last hour, so polling
+    // faster than that adds nothing.
+    RrdHistory {
+        id: rrdHistory
+        client: sessionManager.client(page.profileId)
+        node: page.node
+        type: page.type
+        vmid: page.vmid
+        timeframe: ["hour", "day", "week", "month", "year"][timeframeBox.currentIndex]
+        pollInterval: page.status === PageStatus.Active
+                      && Qt.application.state === Qt.ApplicationActive ? 60000 : 0
+    }
+
     SilicaFlickable {
         anchors.fill: parent
         contentHeight: column.height + Theme.paddingLarge
 
         PullDownMenu {
+            busy: page.busy
+
             MenuItem {
                 //% "Refresh"
                 text: qsTrId("pvedeck-me-refresh")
                 onClicked: details.refresh()
+            }
+            MenuItem {
+                //% "Console"
+                text: qsTrId("pvedeck-me-console")
+                visible: page.isContainer && page.running && !page.busy
+                onClicked: pageStack.push(Qt.resolvedUrl("ConsolePage.qml"), {
+                                              profileId: page.profileId,
+                                              node: page.node,
+                                              type: page.type,
+                                              vmid: page.vmid
+                                          })
+            }
+            Repeater {
+                model: page.actions
+                MenuItem {
+                    text: guestStatus.actionText(modelData)
+                    onClicked: page.runAction(modelData)
+                }
             }
         }
 
@@ -77,12 +126,15 @@ Page {
                     //% "Status"
                     label: qsTrId("pvedeck-la-status")
                     // qmpstatus tells a paused VM apart from a running one.
-                    value: guestStatus.text(page.info.qmpstatus || page.info.status)
+                    value: page.busy
+                           //% "Working…"
+                           ? qsTrId("pvedeck-la-working")
+                           : guestStatus.text(page.info.qmpstatus || page.info.status)
                 }
                 DetailItem {
                     //% "Uptime"
                     label: qsTrId("pvedeck-la-uptime")
-                    value: page.formatUptime(page.info.uptime || 0)
+                    value: guestStatus.uptime(page.info.uptime || 0)
                     visible: page.running
                 }
                 DetailItem {
@@ -139,6 +191,74 @@ Page {
                     label: qsTrId("pvedeck-la-ha")
                     value: page.info.ha ? page.info.ha.state || "" : ""
                     visible: page.info.ha !== undefined && page.info.ha.managed === 1
+                }
+            }
+
+            SectionHeader {
+                //% "History"
+                text: qsTrId("pvedeck-la-history")
+                visible: details.loaded
+            }
+
+            Column {
+                width: parent.width
+                spacing: Theme.paddingLarge
+                visible: details.loaded
+
+                ComboBox {
+                    id: timeframeBox
+                    width: parent.width
+                    //% "Period"
+                    label: qsTrId("pvedeck-la-period")
+                    menu: ContextMenu {
+                        //% "Hour"
+                        MenuItem { text: qsTrId("pvedeck-me-period-hour") }
+                        //% "Day"
+                        MenuItem { text: qsTrId("pvedeck-me-period-day") }
+                        //% "Week"
+                        MenuItem { text: qsTrId("pvedeck-me-period-week") }
+                        //% "Month"
+                        MenuItem { text: qsTrId("pvedeck-me-period-month") }
+                        //% "Year"
+                        MenuItem { text: qsTrId("pvedeck-me-period-year") }
+                    }
+                }
+
+                HistoryChart {
+                    history: rrdHistory
+                    title: qsTrId("pvedeck-la-cpu")
+                    keys: ["cpu"]
+                    maximum: 1
+                    format: function(v) { return guestStatus.percent(v) }
+                }
+                HistoryChart {
+                    history: rrdHistory
+                    title: qsTrId("pvedeck-la-memory")
+                    keys: ["mem"]
+                    referenceKey: "maxmem"
+                    format: function(v) { return guestStatus.bytes(v) }
+                }
+                HistoryChart {
+                    history: rrdHistory
+                    //% "Network"
+                    title: qsTrId("pvedeck-la-network")
+                    keys: ["netin", "netout"]
+                    //% "In"
+                    labels: [qsTrId("pvedeck-la-in"),
+                             //% "Out"
+                             qsTrId("pvedeck-la-out")]
+                    format: function(v) { return guestStatus.bytesPerSecond(v) }
+                }
+                HistoryChart {
+                    history: rrdHistory
+                    //% "Disk I/O"
+                    title: qsTrId("pvedeck-la-disk-io")
+                    keys: ["diskread", "diskwrite"]
+                    //% "Read"
+                    labels: [qsTrId("pvedeck-la-read"),
+                             //% "Write"
+                             qsTrId("pvedeck-la-write")]
+                    format: function(v) { return guestStatus.bytesPerSecond(v) }
                 }
             }
         }

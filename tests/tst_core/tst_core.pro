@@ -8,5 +8,5 @@ QT = core network qml testlib
 include(../../core/core.pri)
 INCLUDEPATH += ../common
 
-HEADERS += ../common/mockpveserver.h
+HEADERS += ../common/mockpveserver.h ../common/mockwebsocket.h
 SOURCES += tst_core.cpp

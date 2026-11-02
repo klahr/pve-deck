@@ -3,11 +3,14 @@ import Sailfish.Silica 1.0
 import PveDeck 1.0
 import "../components"
 
-// The guests (VMs and containers) of a logged-in server, per node.
+// The guests (VMs and containers) of a logged-in server, per node, or of
+// one node when node is set.
 Page {
     id: page
 
+    readonly property bool needsSession: true
     property string profileId
+    property string node
     readonly property var profile: serverStore.get(profileId)
     readonly property QtObject client: sessionManager.client(profileId)
     readonly property QtObject resources: sessionManager.resources(profileId)
@@ -17,15 +20,7 @@ Page {
     ResourceFilterModel {
         id: filterModel
         resources: page.resources
-    }
-
-    // Leave the page, and any guest page above it, if the session ends.
-    Connections {
-        target: page.client
-        onStateChanged: {
-            if (page.client.state === PveClient.Disconnected)
-                pageStack.pop(pageStack.previousPage(page))
-        }
+        node: page.node
     }
 
     SilicaListView {
@@ -40,6 +35,12 @@ Page {
                 onClicked: sessionManager.logout(page.profileId)
             }
             MenuItem {
+                //% "Cluster"
+                text: qsTrId("pvedeck-me-cluster")
+                visible: page.node.length === 0
+                onClicked: pageStack.push(Qt.resolvedUrl("ClusterPage.qml"), { profileId: page.profileId })
+            }
+            MenuItem {
                 //% "Refresh"
                 text: qsTrId("pvedeck-me-refresh")
                 onClicked: page.resources.refresh()
@@ -50,9 +51,11 @@ Page {
             width: listView.width
 
             PageHeader {
-                title: page.profile.displayName || ""
+                title: page.node.length > 0 ? page.node : page.profile.displayName || ""
                 description: {
                     var parts = []
+                    if (page.node.length > 0)
+                        parts.push(page.profile.displayName || "")
                     if (page.client && page.client.userId.length > 0)
                         parts.push(page.client.userId)
                     if (page.client && page.client.serverVersion.length > 0)
@@ -94,7 +97,7 @@ Page {
         }
 
         section {
-            property: "node"
+            property: page.node.length > 0 ? "" : "node"
             delegate: SectionHeader { text: section }
         }
 
@@ -102,8 +105,29 @@ Page {
             id: item
 
             readonly property bool running: model.status === "running"
+            readonly property var tags: model.tags
+            readonly property bool busy: powerActions.busyGuests.indexOf(page.profileId + "/" + model.vmid) >= 0
+            readonly property var actions: busy ? []
+                                                : powerActions.availableActions(model.type, model.status, "",
+                                                                                model.template, model.lock)
 
-            contentHeight: Theme.itemSizeMedium
+            function runAction(action) {
+                var guestNode = model.node
+                var guestType = model.type
+                var guestId = model.vmid
+                var label = model.name || String(model.vmid)
+                if (guestStatus.isDestructive(action)) {
+                    remorseAction(guestStatus.remorseText(action), function() {
+                        powerActions.run(page.profileId, guestNode, guestType, guestId, action, label)
+                    })
+                } else {
+                    powerActions.run(page.profileId, guestNode, guestType, guestId, action, label)
+                }
+            }
+
+            // A third line for the tags when there are any.
+            contentHeight: Math.max(Theme.itemSizeMedium, rowText.height + 2 * Theme.paddingMedium)
+            menu: actions.length > 0 ? contextMenu : null
 
             onClicked: pageStack.push(Qt.resolvedUrl("GuestPage.qml"), {
                                           profileId: page.profileId,
@@ -126,9 +150,30 @@ Page {
                 color: guestStatus.color(model.status)
                 border.width: model.status === "stopped" ? 1 : 0
                 border.color: Theme.secondaryColor
+                visible: !item.busy
+            }
+
+            BusyIndicator {
+                anchors.centerIn: statusDot
+                size: BusyIndicatorSize.ExtraSmall
+                running: item.busy
+            }
+
+            Component {
+                id: contextMenu
+                ContextMenu {
+                    Repeater {
+                        model: item.actions
+                        MenuItem {
+                            text: guestStatus.actionText(modelData)
+                            onClicked: item.runAction(modelData)
+                        }
+                    }
+                }
             }
 
             Column {
+                id: rowText
                 anchors {
                     left: statusDot.right
                     leftMargin: Theme.paddingMedium
@@ -166,9 +211,36 @@ Page {
                             //: %1 is the lock type, e.g. "backup" or "migrate"
                             //% "Locked (%1)"
                             parts.push(qsTrId("pvedeck-la-locked").arg(model.lock))
-                        if (model.tags.length > 0)
-                            parts.push(model.tags.join(", "))
                         return parts.join(" · ")
+                    }
+                }
+
+                // The tags, as coloured dots with their names.
+                Row {
+                    width: parent.width
+                    spacing: Theme.paddingMedium
+                    clip: true
+                    visible: item.tags.length > 0
+
+                    Repeater {
+                        model: item.tags
+
+                        Row {
+                            spacing: Theme.paddingSmall
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Theme.paddingMedium
+                                height: width
+                                radius: width / 2
+                                color: guestStatus.tagColor(modelData, page.resources ? page.resources.tagColors : null)
+                            }
+                            Label {
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                                text: modelData
+                            }
+                        }
                     }
                 }
             }

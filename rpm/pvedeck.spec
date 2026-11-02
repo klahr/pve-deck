@@ -28,6 +28,8 @@ and open a shell, from Sailfish OS.
 
 %install
 %qmake5_install
+# Bundled third-party code: its license travels with the binary.
+install -D -m 644 3rdparty/libvterm/LICENSE %{buildroot}%{_datadir}/%{name}/licenses/libvterm.txt
 
 desktop-file-install --delete-original \
   --dir %{buildroot}%{_datadir}/applications \
