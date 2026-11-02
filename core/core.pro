@@ -14,6 +14,9 @@ HEADERS += \
     memorysecretbackend.h \
     pveclient.h \
     sessionmanager.h \
+    resourcemodel.h \
+    resourcefiltermodel.h \
+    guestdetails.h \
     tfachallenge.h
 
 SOURCES += \
@@ -24,4 +27,7 @@ SOURCES += \
     memorysecretbackend.cpp \
     pveclient.cpp \
     sessionmanager.cpp \
+    resourcemodel.cpp \
+    resourcefiltermodel.cpp \
+    guestdetails.cpp \
     tfachallenge.cpp

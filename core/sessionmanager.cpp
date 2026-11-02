@@ -5,6 +5,7 @@
 #include <QQmlEngine>
 
 #include "pveclient.h"
+#include "resourcemodel.h"
 #include "secretbackend.h"
 #include "serverstore.h"
 #include "tfachallenge.h"
@@ -24,6 +25,59 @@ QStringList SessionManager::connectedIds() const
 QStringList SessionManager::busyIds() const
 {
     return m_busy.toList();
+}
+
+int SessionManager::runningCount() const
+{
+    int n = 0;
+    foreach (ResourceModel *m, m_resources)
+        n += m->runningCount();
+    return n;
+}
+
+int SessionManager::stoppedCount() const
+{
+    int n = 0;
+    foreach (ResourceModel *m, m_resources)
+        n += m->stoppedCount();
+    return n;
+}
+
+int SessionManager::pollInterval() const
+{
+    return m_pollInterval;
+}
+
+void SessionManager::setPollInterval(int ms)
+{
+    if (ms == m_pollInterval)
+        return;
+    m_pollInterval = ms;
+    foreach (ResourceModel *m, m_resources)
+        m->setPollInterval(ms);
+    emit pollIntervalChanged();
+}
+
+ResourceModel *SessionManager::resources(const QString &profileId)
+{
+    if (ResourceModel *existing = m_resources.value(profileId))
+        return existing;
+    PveClient *c = client(profileId);
+    if (!c)
+        return nullptr;
+
+    ResourceModel *m = new ResourceModel(c, this);
+    QQmlEngine::setObjectOwnership(m, QQmlEngine::CppOwnership);
+    m->setPollInterval(m_pollInterval);
+    connect(m, &ResourceModel::countsChanged, this, &SessionManager::countsChanged);
+    m_resources.insert(profileId, m);
+    return m;
+}
+
+void SessionManager::refreshAll()
+{
+    foreach (ResourceModel *m, m_resources)
+        m->refresh();
 }
 
 void SessionManager::setTlsEnabled(bool enabled)
@@ -52,6 +106,8 @@ PveClient *SessionManager::client(const QString &profileId)
             setBusy(id, true);
     });
     connect(c, &PveClient::connected, this, [this, id]() { onConnected(id); });
+    // Created with the client so the cover counts every logged-in server.
+    resources(profileId);
     connect(c, &PveClient::loginFailed, this, [this, id](const QString &message, int status) {
         onLoginFailed(id, message, status);
     });
@@ -221,6 +277,10 @@ void SessionManager::removeServer(const QString &profileId)
 {
     logout(profileId);
     forgetSecret(profileId);
+    if (ResourceModel *m = m_resources.take(profileId)) {
+        m->deleteLater();
+        emit countsChanged();
+    }
     if (PveClient *c = m_clients.take(profileId))
         c->deleteLater();
     setBusy(profileId, false);

@@ -186,30 +186,6 @@
         <source>Pull down to add a Proxmox VE server</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="pvedeck-la-logged-in-as">
-        <source>Logged in as</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="pvedeck-la-pve-version">
-        <source>Proxmox VE version</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="pvedeck-la-certificate">
-        <source>Certificate</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="pvedeck-la-certificate-pinned">
-        <source>Pinned</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="pvedeck-la-certificate-system">
-        <source>Trusted by the system</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="pvedeck-la-session-placeholder">
-        <source>Virtual machines and containers will be listed here.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="pvedeck-me-tfa-totp">
         <source>Authenticator app (TOTP)</source>
         <translation type="unfinished"></translation>
@@ -260,6 +236,174 @@
     </message>
     <message id="pvedeck-la-tfa-webauthn-note">
         <source>Security keys (WebAuthn/U2F) are not supported by the app.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-status-running">
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-status-stopped">
+        <source>Stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-status-paused">
+        <source>Paused</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-status-suspended">
+        <source>Suspended</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-status-prelaunch">
+        <source>Starting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-cover-running" numerus="yes">
+        <source>%n running</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="pvedeck-cover-stopped" numerus="yes">
+        <source>%n stopped</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="pvedeck-la-uptime-days">
+        <source>%1 d %2 h</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-uptime-hours">
+        <source>%1 h %2 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-uptime-minutes">
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-me-refresh">
+        <source>Refresh</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-container-id">
+        <source>Container %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-vm-id">
+        <source>Virtual machine %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-status">
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-uptime">
+        <source>Uptime</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-cpu">
+        <source>CPU</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-cpu-usage" numerus="yes">
+        <source>%1 of %n CPU(s)</source>
+        <extracomment>%1 is a percentage, %n the number of CPU cores</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="pvedeck-la-memory">
+        <source>Memory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-used-of-total">
+        <source>%1 of %2</source>
+        <extracomment>%1 used, %2 total</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-disk">
+        <source>Disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-addresses">
+        <source>IP addresses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-tags">
+        <source>Tags</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-lock">
+        <source>Lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-ha">
+        <source>High availability</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-guest-error">
+        <source>Could not load the guest</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-ph-search">
+        <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-show">
+        <source>Show</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-me-show-all">
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-me-show-running">
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-me-show-stopped">
+        <source>Stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-me-show-vms">
+        <source>Virtual machines</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-me-show-containers">
+        <source>Containers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-type-ct-short">
+        <source>CT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-type-vm-short">
+        <source>VM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-template">
+        <source>Template</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-locked">
+        <source>Locked (%1)</source>
+        <extracomment>%1 is the lock type, e.g. &quot;backup&quot; or &quot;migrate&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-resources-error">
+        <source>Could not load guests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-no-guests">
+        <source>No virtual machines or containers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="pvedeck-la-no-matches">
+        <source>No matches</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

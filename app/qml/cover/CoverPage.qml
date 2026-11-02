@@ -26,5 +26,29 @@ CoverBackground {
                   //% "Connected to %n server(s)"
                   : qsTrId("pvedeck-cover-connected", connectedCount)
         }
+        Label {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            visible: connectedCount > 0
+            //% "%n running"
+            text: qsTrId("pvedeck-cover-running", sessionManager.runningCount)
+        }
+        Label {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            visible: connectedCount > 0
+            color: Theme.secondaryColor
+            //% "%n stopped"
+            text: qsTrId("pvedeck-cover-stopped", sessionManager.stoppedCount)
+        }
+    }
+
+    CoverActionList {
+        enabled: connectedCount > 0
+
+        CoverAction {
+            iconSource: "image://theme/icon-cover-refresh"
+            onTriggered: sessionManager.refreshAll()
+        }
     }
 }

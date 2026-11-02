@@ -4,12 +4,17 @@
 #include <QQmlEngine>
 #include <QQuickView>
 #include <QScopedPointer>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QtQml>
 
 #include <sailfishapp.h>
 
 #include "appinfo.h"
+#include "guestdetails.h"
 #include "pveclient.h"
+#include "resourcefiltermodel.h"
+#include "resourcemodel.h"
 #include "sailfishsecretbackend.h"
 #include "serverstore.h"
 #include "sessionmanager.h"
@@ -24,9 +29,17 @@ int main(int argc, char *argv[])
 
     qmlRegisterUncreatableType<PveClient>("PveDeck", 1, 0, "PveClient",
                                           QStringLiteral("Get clients from sessionManager.client()"));
+    qmlRegisterUncreatableType<ResourceModel>("PveDeck", 1, 0, "ResourceModel",
+                                              QStringLiteral("Get resources from sessionManager.resources()"));
+    qmlRegisterType<ResourceFilterModel>("PveDeck", 1, 0, "ResourceFilterModel");
+    qmlRegisterType<GuestDetails>("PveDeck", 1, 0, "GuestDetails");
 
     AppInfo appInfo(QStringLiteral(APP_VERSION));
-    ServerStore serverStore;
+    // Sailjail only allows writing inside ~/.config/<org>/<app>/, not the
+    // default QSettings file next to it.
+    ServerStore serverStore(new QSettings(
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+            + QStringLiteral("/pvedeck.conf"), QSettings::NativeFormat));
     SailfishSecretBackend secrets;
     SessionManager sessionManager(&serverStore, &secrets);
 

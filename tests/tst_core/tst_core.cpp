@@ -5,9 +5,12 @@
 #include <QtTest>
 
 #include "formencoding.h"
+#include "guestdetails.h"
 #include "memorysecretbackend.h"
 #include "mockpveserver.h"
 #include "pveclient.h"
+#include "resourcefiltermodel.h"
+#include "resourcemodel.h"
 #include "serverprofile.h"
 #include "serverstore.h"
 #include "sessionmanager.h"
@@ -30,6 +33,33 @@ QJsonObject ticketData(const QString &ticket, const QString &csrf, const QString
     return o;
 }
 
+QJsonObject guest(int vmid, const QString &name, const QString &node, const QString &type,
+                  const QString &status, bool isTemplate = false, const QString &tags = QString())
+{
+    QJsonObject o;
+    o.insert(QStringLiteral("vmid"), vmid);
+    o.insert(QStringLiteral("name"), name);
+    o.insert(QStringLiteral("node"), node);
+    o.insert(QStringLiteral("type"), type);
+    o.insert(QStringLiteral("status"), status);
+    o.insert(QStringLiteral("cpu"), status == QLatin1String("running") ? 0.25 : 0.0);
+    o.insert(QStringLiteral("maxcpu"), 2);
+    o.insert(QStringLiteral("mem"), status == QLatin1String("running") ? 536870912.0 : 0.0);
+    o.insert(QStringLiteral("maxmem"), 2147483648.0);
+    o.insert(QStringLiteral("template"), isTemplate ? 1 : 0);
+    if (!tags.isEmpty())
+        o.insert(QStringLiteral("tags"), tags);
+    return o;
+}
+
+QList<int> vmids(const QAbstractItemModel &model)
+{
+    QList<int> out;
+    for (int i = 0; i < model.rowCount(); ++i)
+        out.append(model.index(i, 0).data(ResourceModel::VmidRole).toInt());
+    return out;
+}
+
 QString cookieTicket(const MockPveServer::Request &r)
 {
     const QByteArray cookie = r.headers.value("cookie");
@@ -48,6 +78,7 @@ struct FakePve
     QString currentTicket;
     QString currentCsrf;
     int ticketCounter = 0;
+    QJsonArray resources;
 
     MockPveServer::Response handle(const MockPveServer::Request &r)
     {
@@ -91,6 +122,27 @@ struct FakePve
                     && QString::fromLatin1(r.headers.value("csrfpreventiontoken")) != currentCsrf)
                 return Resp::error(401, "Permission denied - invalid csrf token");
             return Resp::ok(QStringLiteral("UPID:pve:0001:qmstart:100:root@pam:"));
+        }
+        if (r.path == QLatin1String("/api2/json/cluster/resources"))
+            return Resp::ok(resources);
+        if (r.path == QLatin1String("/api2/json/nodes/pve/qemu/100/status/current")) {
+            QJsonObject o = guest(100, QStringLiteral("web"), QStringLiteral("pve"),
+                                  QStringLiteral("qemu"), QStringLiteral("running"));
+            o.insert(QStringLiteral("qmpstatus"), QStringLiteral("running"));
+            o.insert(QStringLiteral("cpus"), 2);
+            o.insert(QStringLiteral("uptime"), 3600);
+            o.insert(QStringLiteral("agent"), 1);
+            return Resp::ok(o);
+        }
+        if (r.path == QLatin1String("/api2/json/nodes/pve/qemu/100/agent/network-get-interfaces")) {
+            const QByteArray json =
+                    "{\"result\": ["
+                    "{\"name\": \"lo\", \"ip-addresses\": [{\"ip-address\": \"127.0.0.1\"}]},"
+                    "{\"name\": \"eth0\", \"ip-addresses\": ["
+                    "{\"ip-address\": \"192.168.1.10\"},"
+                    "{\"ip-address\": \"fe80::5054:ff:fe12:3456\"},"
+                    "{\"ip-address\": \"fd00::10\"}]}]}";
+            return Resp::ok(QJsonDocument::fromJson(json).object());
         }
         return Resp::error(501, "Method not implemented");
     }
@@ -587,6 +639,183 @@ private slots:
         manager.removeServer(a);
         QCOMPARE(manager.connectedIds(), QStringList() << b);
         QCOMPARE(store.count(), 1);
+    }
+
+    // --- Resources -----------------------------------------------------
+
+    void resourceModelMergesUpdates()
+    {
+        ResourceModel model(nullptr);
+        QJsonObject storage;
+        storage.insert(QStringLiteral("type"), QStringLiteral("storage"));
+        storage.insert(QStringLiteral("node"), QStringLiteral("pve1"));
+        QJsonArray first;
+        first << guest(101, QStringLiteral("db"), QStringLiteral("pve2"), QStringLiteral("lxc"), QStringLiteral("running"))
+              << guest(100, QStringLiteral("web"), QStringLiteral("pve1"), QStringLiteral("qemu"), QStringLiteral("running"),
+                       false, QStringLiteral("prod;web os"))
+              << guest(102, QStringLiteral("old"), QStringLiteral("pve1"), QStringLiteral("qemu"), QStringLiteral("stopped"))
+              << guest(9000, QStringLiteral("tmpl"), QStringLiteral("pve1"), QStringLiteral("qemu"), QStringLiteral("stopped"), true)
+              << storage;
+
+        QSignalSpy loadedSpy(&model, SIGNAL(loadedChanged()));
+        model.update(first);
+        // Sorted by node, then vmid; storage is skipped.
+        QCOMPARE(vmids(model), QList<int>() << 100 << 102 << 9000 << 101);
+        QCOMPARE(model.runningCount(), 2);
+        QCOMPARE(model.stoppedCount(), 1);   // the template is not counted
+        QVERIFY(model.isLoaded());
+        QCOMPARE(loadedSpy.count(), 1);
+        QCOMPARE(model.get(0).value(QStringLiteral("tags")).toStringList(),
+                 QStringList() << QStringLiteral("prod") << QStringLiteral("web") << QStringLiteral("os"));
+
+        // 102 starts, 101 is gone and 103 is new: rows change in place.
+        QSignalSpy resetSpy(&model, SIGNAL(modelReset()));
+        QSignalSpy insertSpy(&model, SIGNAL(rowsInserted(QModelIndex,int,int)));
+        QSignalSpy removeSpy(&model, SIGNAL(rowsRemoved(QModelIndex,int,int)));
+        QSignalSpy changeSpy(&model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)));
+        QJsonArray second;
+        second << guest(100, QStringLiteral("web"), QStringLiteral("pve1"), QStringLiteral("qemu"), QStringLiteral("running"),
+                        false, QStringLiteral("prod;web os"))
+               << guest(102, QStringLiteral("old"), QStringLiteral("pve1"), QStringLiteral("qemu"), QStringLiteral("running"))
+               << guest(103, QStringLiteral("new"), QStringLiteral("pve1"), QStringLiteral("lxc"), QStringLiteral("stopped"))
+               << guest(9000, QStringLiteral("tmpl"), QStringLiteral("pve1"), QStringLiteral("qemu"), QStringLiteral("stopped"), true);
+        model.update(second);
+        QCOMPARE(vmids(model), QList<int>() << 100 << 102 << 103 << 9000);
+        QCOMPARE(resetSpy.count(), 0);
+        QCOMPARE(insertSpy.count(), 1);
+        QCOMPARE(removeSpy.count(), 1);
+        QCOMPARE(changeSpy.count(), 1);
+        QCOMPARE(model.get(1).value(QStringLiteral("status")).toString(), QStringLiteral("running"));
+        QCOMPARE(model.runningCount(), 2);
+        QCOMPARE(model.stoppedCount(), 1);
+    }
+
+    void resourceFilterModel()
+    {
+        ResourceModel model(nullptr);
+        QJsonArray list;
+        list << guest(100, QStringLiteral("web"), QStringLiteral("pve"), QStringLiteral("qemu"), QStringLiteral("running"),
+                      false, QStringLiteral("prod"))
+             << guest(101, QStringLiteral("db"), QStringLiteral("pve"), QStringLiteral("lxc"), QStringLiteral("stopped"))
+             << guest(102, QStringLiteral("cache"), QStringLiteral("pve"), QStringLiteral("lxc"), QStringLiteral("running"))
+             << guest(9000, QStringLiteral("tmpl"), QStringLiteral("pve"), QStringLiteral("qemu"), QStringLiteral("stopped"), true);
+        model.update(list);
+
+        ResourceFilterModel filter;
+        QSignalSpy countSpy(&filter, SIGNAL(countChanged()));
+        filter.setResources(&model);
+        QCOMPARE(filter.count(), 4);
+
+        filter.setShow(ResourceFilterModel::ShowRunning);
+        QCOMPARE(vmids(filter), QList<int>() << 100 << 102);
+        filter.setShow(ResourceFilterModel::ShowStopped);
+        QCOMPARE(vmids(filter), QList<int>() << 101);
+        filter.setShow(ResourceFilterModel::ShowVirtualMachines);
+        QCOMPARE(vmids(filter), QList<int>() << 100 << 9000);
+        filter.setShow(ResourceFilterModel::ShowContainers);
+        QCOMPARE(vmids(filter), QList<int>() << 101 << 102);
+
+        filter.setShow(ResourceFilterModel::ShowAll);
+        filter.setSearchText(QStringLiteral("PROD"));
+        QCOMPARE(vmids(filter), QList<int>() << 100);
+        filter.setSearchText(QStringLiteral(" 10 "));
+        QCOMPARE(vmids(filter), QList<int>() << 100 << 101 << 102);
+        filter.setSearchText(QStringLiteral("cach"));
+        QCOMPARE(vmids(filter), QList<int>() << 102);
+        QCOMPARE(filter.get(0).value(QStringLiteral("name")).toString(), QStringLiteral("cache"));
+        QVERIFY(countSpy.count() > 0);
+    }
+
+    void resourceModelFollowsClient()
+    {
+        m_fake.resources << guest(100, QStringLiteral("web"), QStringLiteral("pve"), QStringLiteral("qemu"), QStringLiteral("running"))
+                         << guest(101, QStringLiteral("db"), QStringLiteral("pve"), QStringLiteral("lxc"), QStringLiteral("stopped"));
+
+        PveClient client;
+        client.setEndpoint(QStringLiteral("127.0.0.1"), m_server->serverPort(), false);
+        ResourceModel model(&client);
+        model.setPollInterval(50);
+
+        client.loginWithPassword(QStringLiteral("root@pam"), QStringLiteral("secret"));
+        QTRY_VERIFY(model.isLoaded());
+        QCOMPARE(model.count(), 2);
+        const QList<MockPveServer::Request> requests = m_server->requestsTo(QStringLiteral("/api2/json/cluster/resources"));
+        QVERIFY(!requests.isEmpty());
+        QCOMPARE(requests.first().query.value(QStringLiteral("type")), QStringLiteral("vm"));
+
+        // Polling picks up changes.
+        m_fake.resources << guest(102, QStringLiteral("new"), QStringLiteral("pve"), QStringLiteral("lxc"), QStringLiteral("running"));
+        QTRY_COMPARE(model.count(), 3);
+
+        // Logging out empties the model and stops polling.
+        client.logout();
+        QCOMPARE(model.count(), 0);
+        QVERIFY(!model.isLoaded());
+        QCOMPARE(model.runningCount(), 0);
+        // A poll already on the wire may still arrive; its reply is ignored.
+        QTest::qWait(100);
+        QCOMPARE(model.count(), 0);
+        const int polled = m_server->requestsTo(QStringLiteral("/api2/json/cluster/resources")).size();
+        QTest::qWait(200);
+        QCOMPARE(m_server->requestsTo(QStringLiteral("/api2/json/cluster/resources")).size(), polled);
+    }
+
+    void sessionManagerCountsGuests()
+    {
+        m_fake.resources << guest(100, QStringLiteral("web"), QStringLiteral("pve"), QStringLiteral("qemu"), QStringLiteral("running"))
+                         << guest(101, QStringLiteral("db"), QStringLiteral("pve"), QStringLiteral("lxc"), QStringLiteral("stopped"))
+                         << guest(9000, QStringLiteral("tmpl"), QStringLiteral("pve"), QStringLiteral("qemu"), QStringLiteral("stopped"), true);
+
+        QTemporaryDir dir;
+        ServerStore store(new QSettings(dir.path() + QStringLiteral("/s.ini"), QSettings::IniFormat));
+        MemorySecretBackend secrets;
+        SessionManager manager(&store, &secrets);
+        manager.setTlsEnabled(false);
+        const QString id = addProfile(store, QStringLiteral("root"), QStringLiteral("pam"));
+
+        QSignalSpy countsSpy(&manager, SIGNAL(countsChanged()));
+        manager.login(id, QStringLiteral("secret"), false);
+        QTRY_COMPARE(manager.runningCount(), 1);
+        QCOMPARE(manager.stoppedCount(), 1);
+        QCOMPARE(manager.resources(id)->count(), 3);
+        QVERIFY(countsSpy.count() > 0);
+
+        manager.logout(id);
+        QCOMPARE(manager.runningCount(), 0);
+        QCOMPARE(manager.stoppedCount(), 0);
+        QVERIFY(manager.resources(QStringLiteral("no-such-profile")) == nullptr);
+    }
+
+    void guestDetailsStatusAndAddresses()
+    {
+        PveClient client;
+        client.setEndpoint(QStringLiteral("127.0.0.1"), m_server->serverPort(), false);
+        QSignalSpy connectedSpy(&client, SIGNAL(connected()));
+        client.loginWithPassword(QStringLiteral("root@pam"), QStringLiteral("secret"));
+        QVERIFY(connectedSpy.wait());
+
+        GuestDetails details;
+        details.setClient(&client);
+        details.setNode(QStringLiteral("pve"));
+        details.setType(QStringLiteral("qemu"));
+        details.setVmid(100);
+        QTRY_VERIFY(details.isLoaded());
+        QCOMPARE(details.status().value(QStringLiteral("name")).toString(), QStringLiteral("web"));
+        // Loopback and link-local addresses are left out.
+        QTRY_COMPARE(details.addresses(),
+                     QStringList() << QStringLiteral("192.168.1.10") << QStringLiteral("fd00::10"));
+        // Properties set one after another cause a single status request.
+        QCOMPARE(m_server->requestsTo(QStringLiteral("/api2/json/nodes/pve/qemu/100/status/current")).size(), 1);
+    }
+
+    void lxcAddressParsing()
+    {
+        const QByteArray json =
+                "[{\"name\": \"lo\", \"inet\": \"127.0.0.1/8\", \"inet6\": \"::1/128\"},"
+                " {\"name\": \"eth0\", \"inet\": \"10.0.0.5/24\", \"inet6\": \"fe80::1/64\"},"
+                " {\"name\": \"eth1\", \"inet6\": \"fd00::5/64\"}]";
+        QCOMPARE(GuestDetails::parseLxcAddresses(QJsonDocument::fromJson(json).array()),
+                 QStringList() << QStringLiteral("10.0.0.5") << QStringLiteral("fd00::5"));
     }
 
 private:

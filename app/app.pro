@@ -20,12 +20,15 @@ DISTFILES += \
     qml/pvedeck.qml \
     qml/cover/CoverPage.qml \
     qml/components/LoginFlow.qml \
+    qml/components/GuestStatus.qml \
+    qml/components/UsageBar.qml \
     qml/pages/ServerListPage.qml \
     qml/pages/ServerDialog.qml \
     qml/pages/LoginDialog.qml \
     qml/pages/TfaDialog.qml \
     qml/pages/CertificateDialog.qml \
     qml/pages/SessionPage.qml \
+    qml/pages/GuestPage.qml \
     qml/pages/AboutPage.qml \
     pvedeck.desktop
 

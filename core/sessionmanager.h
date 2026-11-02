@@ -10,6 +10,7 @@
 #include <QVariantMap>
 
 class PveClient;
+class ResourceModel;
 class SecretBackend;
 class ServerStore;
 
@@ -27,18 +28,30 @@ class SessionManager : public QObject
     Q_OBJECT
     Q_PROPERTY(QStringList connectedIds READ connectedIds NOTIFY connectedIdsChanged)
     Q_PROPERTY(QStringList busyIds READ busyIds NOTIFY busyIdsChanged)
+    // Summed over all logged-in servers, for the cover. Templates are not counted.
+    Q_PROPERTY(int runningCount READ runningCount NOTIFY countsChanged)
+    Q_PROPERTY(int stoppedCount READ stoppedCount NOTIFY countsChanged)
+    // How often the resource lists are refreshed, in ms (0 = never).
+    Q_PROPERTY(int pollInterval READ pollInterval WRITE setPollInterval NOTIFY pollIntervalChanged)
 
 public:
     SessionManager(ServerStore *store, SecretBackend *secrets, QObject *parent = nullptr);
 
     QStringList connectedIds() const;
     QStringList busyIds() const;
+    int runningCount() const;
+    int stoppedCount() const;
+    int pollInterval() const;
+    void setPollInterval(int ms);
 
     // Unit tests only: talk plain HTTP to a mock server.
     void setTlsEnabled(bool enabled);
 
     // Created on demand; owned by the SessionManager.
     Q_INVOKABLE PveClient *client(const QString &profileId);
+    // The guests of a server; empty while it is not logged in.
+    Q_INVOKABLE ResourceModel *resources(const QString &profileId);
+    Q_INVOKABLE void refreshAll();
 
     Q_INVOKABLE bool isConnected(const QString &profileId) const;
     Q_INVOKABLE void connectServer(const QString &profileId);
@@ -62,6 +75,8 @@ public:
 signals:
     void connectedIdsChanged();
     void busyIdsChanged();
+    void countsChanged();
+    void pollIntervalChanged();
 
     void secretRequired(const QString &profileId, const QString &message);
     void tfaRequired(const QString &profileId);
@@ -90,11 +105,13 @@ private:
     ServerStore *m_store;
     SecretBackend *m_secrets;
     QHash<QString, PveClient *> m_clients;
+    QHash<QString, ResourceModel *> m_resources;
     QHash<QString, PendingLogin> m_pending;
     QHash<QString, QVariantMap> m_tfaChallenges;
     QSet<QString> m_busy;
     QStringList m_connectedIds;
     bool m_tls = true;
+    int m_pollInterval = 5000;
 };
 
 #endif // PVEDECK_SESSIONMANAGER_H

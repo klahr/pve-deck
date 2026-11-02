@@ -11,4 +11,12 @@ ApplicationWindow {
     allowedOrientations: defaultAllowedOrientations
 
     LoginFlow { }
+
+    // Guest lists refresh every 5 s while the app is in front; in the
+    // background only the cover needs them, once a minute.
+    Binding {
+        target: sessionManager
+        property: "pollInterval"
+        value: Qt.application.state === Qt.ApplicationActive ? 5000 : 60000
+    }
 }
