@@ -236,6 +236,7 @@ Page {
                     title: qsTrId("pvedeck-la-memory")
                     keys: ["mem"]
                     referenceKey: "maxmem"
+                    bytes: true
                     format: function(v) { return guestStatus.bytes(v) }
                 }
                 HistoryChart {
@@ -247,6 +248,7 @@ Page {
                     labels: [qsTrId("pvedeck-la-in"),
                              //% "Out"
                              qsTrId("pvedeck-la-out")]
+                    bytes: true
                     format: function(v) { return guestStatus.bytesPerSecond(v) }
                 }
                 HistoryChart {
@@ -258,6 +260,7 @@ Page {
                     labels: [qsTrId("pvedeck-la-read"),
                              //% "Write"
                              qsTrId("pvedeck-la-write")]
+                    bytes: true
                     format: function(v) { return guestStatus.bytesPerSecond(v) }
                 }
             }

@@ -15,6 +15,8 @@ Column {
     property var labels: []
     property string referenceKey
     property real maximum
+    // The values are bytes (memory, bytes per second).
+    property bool bytes
     // function(value) returning the value as text.
     property var format: function(value) { return String(value) }
 
@@ -110,6 +112,7 @@ Column {
             gridColor: chart.dark ? "#2c2c2a" : "#e1e0d9"
             surfaceColor: chart.surfaceColor
             maximum: chart.maximum
+            bytes: chart.bytes
         }
 
         // Top of the y-axis; the bottom is always 0.

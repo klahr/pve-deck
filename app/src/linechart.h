@@ -26,8 +26,11 @@ class LineChart : public QQuickPaintedItem
     Q_PROPERTY(QColor referenceColor READ referenceColor WRITE setReferenceColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor gridColor READ gridColor WRITE setGridColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor surfaceColor READ surfaceColor WRITE setSurfaceColor NOTIFY appearanceChanged)
-    // Fixed top of the y-axis; 0 picks a round number above the data.
+    // Fixed top of the y-axis; 0 picks a round number above the data, or
+    // the reference line's highest value when there is one.
     Q_PROPERTY(qreal maximum READ maximum WRITE setMaximum NOTIFY appearanceChanged)
+    // Values are bytes, shown in binary units: round to 1, 2, 5... KiB, MiB.
+    Q_PROPERTY(bool bytes READ bytes WRITE setBytes NOTIFY appearanceChanged)
     // The top of the y-axis actually used.
     Q_PROPERTY(qreal yMaximum READ yMaximum NOTIFY rangeChanged)
     Q_PROPERTY(int cursorIndex READ cursorIndex WRITE setCursorIndex NOTIFY cursorIndexChanged)
@@ -51,6 +54,8 @@ public:
     void setSurfaceColor(const QColor &color);
     qreal maximum() const;
     void setMaximum(qreal maximum);
+    bool bytes() const;
+    void setBytes(bool bytes);
     qreal yMaximum() const;
     int cursorIndex() const;
     void setCursorIndex(int index);
@@ -62,6 +67,8 @@ public:
 
     // 1, 2 or 5 times a power of ten, at or above value.
     static qreal niceCeiling(qreal value);
+    // The same in binary units: 1, 2, 5 ... 500 times a power of 1024.
+    static qreal niceByteCeiling(qreal value);
 
 signals:
     void historyChanged();
@@ -82,6 +89,7 @@ private:
     QColor m_gridColor;
     QColor m_surfaceColor;
     qreal m_maximum = 0;
+    bool m_bytes = false;
     qreal m_yMaximum = 1;
     int m_cursorIndex = -1;
 };

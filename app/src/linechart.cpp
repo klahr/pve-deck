@@ -143,6 +143,19 @@ void LineChart::setMaximum(qreal maximum)
     emit appearanceChanged();
 }
 
+bool LineChart::bytes() const
+{
+    return m_bytes;
+}
+
+void LineChart::setBytes(bool bytes)
+{
+    if (bytes == m_bytes)
+        return;
+    m_bytes = bytes;
+    emit appearanceChanged();
+}
+
 qreal LineChart::yMaximum() const
 {
     return m_yMaximum;
@@ -184,6 +197,21 @@ qreal LineChart::niceCeiling(qreal value)
             return step * magnitude;
     }
     return 10 * magnitude;
+}
+
+qreal LineChart::niceByteCeiling(qreal value)
+{
+    if (value <= 0 || std::isnan(value))
+        return 1;
+    qreal unit = 1;
+    while (value / unit >= 1024)
+        unit *= 1024;
+    const qreal steps[] = { 1, 2, 5, 10, 20, 50, 100, 200, 500 };
+    for (qreal step : steps) {
+        if (step * unit >= value * (1 - 1e-9))
+            return step * unit;
+    }
+    return 1024 * unit;
 }
 
 void LineChart::paint(QPainter *painter)
@@ -293,18 +321,26 @@ void LineChart::updateRange()
     qreal top = m_maximum;
     if (top <= 0) {
         double highest = 0;
+        double reference = 0;
         if (m_history) {
-            QStringList all = m_keys;
-            if (!m_referenceKey.isEmpty())
-                all.append(m_referenceKey);
-            foreach (const QString &key, all) {
+            foreach (const QString &key, m_keys) {
                 foreach (double v, m_history->values(key)) {
                     if (!std::isnan(v) && v > highest)
                         highest = v;
                 }
             }
+            if (!m_referenceKey.isEmpty()) {
+                foreach (double v, m_history->values(m_referenceKey)) {
+                    if (!std::isnan(v) && v > reference)
+                        reference = v;
+                }
+            }
         }
-        top = niceCeiling(highest);
+        // A reference such as the memory size is the natural top.
+        if (reference > 0 && highest <= reference)
+            top = reference;
+        else
+            top = m_bytes ? niceByteCeiling(qMax(highest, reference)) : niceCeiling(qMax(highest, reference));
     }
     if (qFuzzyCompare(top, m_yMaximum))
         return;
