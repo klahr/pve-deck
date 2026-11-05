@@ -42,4 +42,4 @@ DISTFILES += \
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172
 
-TRANSLATIONS += translations/pvedeck.ts translations/pvedeck-sv.ts
+TRANSLATIONS += translations/pvedeck.ts

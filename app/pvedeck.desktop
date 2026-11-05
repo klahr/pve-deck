@@ -6,8 +6,6 @@ Icon=pvedeck
 Exec=/usr/bin/pvedeck
 Name=PVE Deck
 Comment=Proxmox VE client
-Name[sv]=PVE Deck
-Comment[sv]=Proxmox VE-klient
 
 [X-Sailjail]
 OrganizationName=io.github.klahr
