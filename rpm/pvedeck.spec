@@ -1,6 +1,6 @@
 Name:       pvedeck
 Summary:    Proxmox VE client
-Version:    0.1.0
+Version:    0.1.1
 Release:    1
 License:    GPL-3.0-or-later
 URL:        https://github.com/klahr/pve-deck

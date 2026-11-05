@@ -4,7 +4,7 @@ CONFIG += link_pkgconfig sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased s
 QT += network qml quick
 PKGCONFIG += sailfishsecrets
 
-isEmpty(VERSION): VERSION = 0.1.0
+isEmpty(VERSION): VERSION = 0.1.1
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 include(../core/core.pri)
