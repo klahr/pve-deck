@@ -27,8 +27,14 @@ Dialog {
             rememberSecret: tokenAuth ? true : rememberSwitch.checked
         }
         var id = profileId
+        var identityChanged = false
         if (editing) {
+            var before = profile
             serverStore.update(id, data)
+            var after = serverStore.get(id)
+            // A saved secret belongs to the old server and user.
+            identityChanged = ["host", "port", "username", "realm", "authMethod", "tokenName"]
+                    .some(function(key) { return before[key] !== after[key] })
         } else {
             id = serverStore.add(data)
         }
@@ -36,7 +42,7 @@ Dialog {
             return
         if (tokenAuth && tokenSecretField.text.length > 0)
             sessionManager.storeSecret(id, tokenSecretField.text)
-        if (!tokenAuth && !rememberSwitch.checked)
+        else if (identityChanged || (!tokenAuth && !rememberSwitch.checked))
             sessionManager.forgetSecret(id)
     }
 

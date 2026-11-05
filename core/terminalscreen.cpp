@@ -127,13 +127,20 @@ TerminalScreen::Rgb TerminalScreen::defaultBackground() const
 void TerminalScreen::setScrollbackLimit(int lines)
 {
     m_scrollbackLimit = qMax(0, lines);
-    while (m_scrollback.size() > m_scrollbackLimit)
+    while (m_scrollback.size() > m_scrollbackLimit) {
         m_scrollback.removeFirst();
+        ++m_droppedLines;
+    }
 }
 
 int TerminalScreen::scrollbackSize() const
 {
     return m_scrollback.size();
+}
+
+int TerminalScreen::droppedLines() const
+{
+    return m_droppedLines;
 }
 
 void TerminalScreen::feed(const QByteArray &data)
@@ -271,8 +278,10 @@ int TerminalScreen::onPushLine(int cols, const VTermScreenCell *cells, void *use
     QVector<VTermScreenCell> line(cols);
     std::memcpy(line.data(), cells, sizeof(VTermScreenCell) * static_cast<size_t>(cols));
     self->m_scrollback.append(line);
-    if (self->m_scrollback.size() > self->m_scrollbackLimit)
+    if (self->m_scrollback.size() > self->m_scrollbackLimit) {
         self->m_scrollback.removeFirst();
+        ++self->m_droppedLines;
+    }
     return 1;
 }
 
@@ -297,6 +306,7 @@ int TerminalScreen::onPopLine(int cols, VTermScreenCell *cells, void *user)
 int TerminalScreen::onClearScrollback(void *user)
 {
     TerminalScreen *self = static_cast<TerminalScreen *>(user);
+    self->m_droppedLines += self->m_scrollback.size();
     self->m_scrollback.clear();
     self->m_damaged = true;
     return 1;

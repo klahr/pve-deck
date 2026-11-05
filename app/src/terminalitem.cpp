@@ -107,11 +107,22 @@ TerminalItem::TerminalItem(QQuickItem *parent)
 
     connect(m_screen, &TerminalScreen::damaged, this, [this]() {
         const int size = m_screen->scrollbackSize();
+        const int dropped = m_screen->droppedLines() - m_lastDropped;
+        m_lastDropped = m_screen->droppedLines();
+        if (dropped > 0 && m_hasSelection) {
+            // Selection lines count from the oldest kept line, which moved.
+            m_anchorLine -= dropped;
+            m_endLine -= dropped;
+            if (qMin(m_anchorLine, m_endLine) < 0)
+                clearSelection();
+        }
+        // New lines: growth of the scrollback plus those that replaced dropped ones.
+        const int added = size - m_lastScrollback + dropped;
         if (m_screen->isAltScreen()) {
             setScrollOffset(0);
-        } else if (size != m_lastScrollback && m_scrollOffset > 0) {
+        } else if (added > 0 && m_scrollOffset > 0) {
             // Keep the view on the same history line while scrolled back.
-            setScrollOffset(m_scrollOffset + qMax(0, size - m_lastScrollback));
+            setScrollOffset(m_scrollOffset + added);
         }
         m_lastScrollback = size;
         update();
@@ -131,8 +142,10 @@ void TerminalItem::setBackend(TerminalBackend *backend)
 {
     if (backend == m_backend)
         return;
-    if (m_backend)
+    if (m_backend) {
         m_backend->disconnect(this);
+        m_backend->disconnect(m_screen);
+    }
     m_backend = backend;
     if (backend) {
         connect(backend, &TerminalBackend::dataReceived, m_screen, &TerminalScreen::feed);
@@ -484,7 +497,8 @@ QVariant TerminalItem::inputMethodQuery(Qt::InputMethodQuery query) const
         return static_cast<int>(Qt::ImhNoPredictiveText | Qt::ImhNoAutoUppercase
                                 | Qt::ImhPreferLowercase);
     case Qt::ImCursorRectangle:
-        return QRectF(m_screen->cursorColumn() * m_cellWidth, m_screen->cursorRow() * m_cellHeight,
+        return QRectF(m_screen->cursorColumn() * m_cellWidth,
+                      (m_screen->cursorRow() + m_scrollOffset) * m_cellHeight,
                       m_cellWidth, m_cellHeight);
     case Qt::ImSurroundingText:
         return QString();

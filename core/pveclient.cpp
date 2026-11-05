@@ -11,11 +11,17 @@
 #include <QSslConfiguration>
 #include <QSslError>
 #include <QStringList>
+#include <QTimer>
 #include <QUrlQuery>
 
 namespace {
 
 const char *const UntrustedProperty = "pvedeckCertificateUntrusted";
+const char *const TimedOutProperty = "pvedeckTimedOut";
+// A request without an answer by then is given up, e.g. after a network switch.
+const int RequestTimeoutMs = 30000;
+// A renewal that failed on the network is retried this soon.
+const int RenewRetryMs = 60000;
 
 QString messageFor(QNetworkReply *reply, int status, const QJsonDocument &doc)
 {
@@ -133,7 +139,10 @@ void PveClient::loginWithPassword(const QString &userId, const QString &password
     FormFields fields;
     fields << qMakePair(QStringLiteral("username"), userId)
            << qMakePair(QStringLiteral("password"), password);
-    send(Post, QStringLiteral("/access/ticket"), fields, false, [this](const Reply &r) {
+    const int generation = m_generation;
+    send(Post, QStringLiteral("/access/ticket"), fields, false, [this, generation](const Reply &r) {
+        if (generation != m_generation)
+            return;
         handleTicket(r, false);
     });
 }
@@ -148,8 +157,9 @@ void PveClient::loginWithToken(const QString &tokenId, const QString &secret)
     setState(Connecting);
 
     // A token has no login step; check it with a cheap call.
-    send(Get, QStringLiteral("/version"), FormFields(), true, [this](const Reply &r) {
-        if (m_state != Connecting)
+    const int generation = m_generation;
+    send(Get, QStringLiteral("/version"), FormFields(), true, [this, generation](const Reply &r) {
+        if (generation != m_generation || m_state != Connecting)
             return;
         if (!r.ok) {
             const QString message = r.httpStatus == 401
@@ -181,8 +191,9 @@ void PveClient::submitTfa(const QString &response)
     fields << qMakePair(QStringLiteral("username"), m_userId)
            << qMakePair(QStringLiteral("tfa-challenge"), m_tfaChallenge)
            << qMakePair(QStringLiteral("password"), response);
-    send(Post, QStringLiteral("/access/ticket"), fields, false, [this](const Reply &r) {
-        if (m_state != Connecting)
+    const int generation = m_generation;
+    send(Post, QStringLiteral("/access/ticket"), fields, false, [this, generation](const Reply &r) {
+        if (generation != m_generation || m_state != Connecting)
             return;
         if (!r.ok) {
             // The challenge stays valid for a while, so let the user retry.
@@ -223,7 +234,7 @@ void PveClient::renewTicket()
 {
     if (m_authMethod != PasswordAuth || m_ticket.isEmpty() || m_renewing)
         return;
-    if (m_ticketAge.isValid() && m_ticketAge.elapsed() >= m_lifetimeMs) {
+    if (ticketAge() >= m_lifetimeMs) {
         expire(tr("The session has expired"));
         return;
     }
@@ -231,7 +242,10 @@ void PveClient::renewTicket()
     FormFields fields;
     fields << qMakePair(QStringLiteral("username"), m_userId)
            << qMakePair(QStringLiteral("password"), m_ticket);
-    send(Post, QStringLiteral("/access/ticket"), fields, false, [this](const Reply &r) {
+    const int generation = m_generation;
+    send(Post, QStringLiteral("/access/ticket"), fields, false, [this, generation](const Reply &r) {
+        if (generation != m_generation)
+            return;
         m_renewing = false;
         if (m_state != Connected)
             return;
@@ -274,8 +288,8 @@ void PveClient::call(Method method, const QString &path, const FormFields &field
         return;
     }
 
-    if (m_authMethod == PasswordAuth && m_ticketAge.isValid()) {
-        const qint64 age = m_ticketAge.elapsed();
+    if (m_authMethod == PasswordAuth && m_ticketTime > 0) {
+        const qint64 age = ticketAge();
         if (age >= m_lifetimeMs) {
             // The device was probably asleep past the renewal time.
             Reply r;
@@ -298,8 +312,9 @@ void PveClient::call(Method method, const QString &path, const FormFields &field
         }
     }
 
-    send(method, path, fields, true, [this, callback](const Reply &r) {
-        if (r.httpStatus == 401 && m_state == Connected)
+    const int generation = m_generation;
+    send(method, path, fields, true, [this, callback, generation](const Reply &r) {
+        if (r.httpStatus == 401 && m_state == Connected && generation == m_generation)
             expire(tr("The session has expired"));
         if (callback)
             callback(r);
@@ -345,16 +360,30 @@ void PveClient::send(Method method, const QString &path, const FormFields &field
     case Delete: reply = m_nam->deleteResource(request); break;
     }
 
+    QTimer *timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, reply, [reply]() {
+        reply->setProperty(TimedOutProperty, true);
+        reply->abort();
+    });
+    timeout->start(RequestTimeoutMs);
+
     connect(reply, &QNetworkReply::sslErrors, this, [this, reply](const QList<QSslError> &errors) {
         handleSslErrors(reply, errors);
     });
 
-    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
         reply->deleteLater();
 
         Reply r;
         r.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         r.certificateUntrusted = reply->property(UntrustedProperty).toBool();
+        if (r.certificateUntrusted) {
+            m_untrustedFingerprint = reply->property("pvedeckFingerprint").toString();
+            m_untrustedSubject = reply->property("pvedeckSubject").toString();
+            m_untrustedIssuer = reply->property("pvedeckIssuer").toString();
+            m_untrustedExpires = reply->property("pvedeckExpires").toDateTime();
+        }
 
         const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         if (doc.isObject())
@@ -363,9 +392,12 @@ void PveClient::send(Method method, const QString &path, const FormFields &field
         r.ok = reply->error() == QNetworkReply::NoError
                 && r.httpStatus >= 200 && r.httpStatus < 300;
         if (!r.ok) {
-            r.error = r.certificateUntrusted
-                    ? PveClient::tr("The server certificate is not trusted")
-                    : messageFor(reply, r.httpStatus, doc);
+            if (r.certificateUntrusted)
+                r.error = PveClient::tr("The server certificate is not trusted");
+            else if (reply->property(TimedOutProperty).toBool())
+                r.error = PveClient::tr("The server did not respond");
+            else
+                r.error = messageFor(reply, r.httpStatus, doc);
         }
         if (callback)
             callback(r);
@@ -382,11 +414,14 @@ void PveClient::handleSslErrors(QNetworkReply *reply, const QList<QSslError> &er
         return;
     }
 
+    // Kept on the reply: another request may fail with other details first.
     reply->setProperty(UntrustedProperty, true);
-    m_untrustedFingerprint = fingerprint;
-    m_untrustedSubject = cert.subjectInfo(QSslCertificate::CommonName).join(QStringLiteral(", "));
-    m_untrustedIssuer = cert.issuerInfo(QSslCertificate::CommonName).join(QStringLiteral(", "));
-    m_untrustedExpires = cert.expiryDate();
+    reply->setProperty("pvedeckFingerprint", fingerprint);
+    reply->setProperty("pvedeckSubject",
+                       cert.subjectInfo(QSslCertificate::CommonName).join(QStringLiteral(", ")));
+    reply->setProperty("pvedeckIssuer",
+                       cert.issuerInfo(QSslCertificate::CommonName).join(QStringLiteral(", ")));
+    reply->setProperty("pvedeckExpires", cert.expiryDate());
 }
 
 void PveClient::handleTicket(const Reply &r, bool renewal)
@@ -397,6 +432,12 @@ void PveClient::handleTicket(const Reply &r, bool renewal)
 
     if (!r.ok) {
         if (renewal) {
+            // A network problem: the ticket is still good until its lifetime ends.
+            if (r.httpStatus != 401 && ticketAge() < m_lifetimeMs) {
+                m_renewTimer.start(RenewRetryMs);
+                flushPending(false, r.error);
+                return;
+            }
             expire(tr("The session could not be renewed"));
             return;
         }
@@ -446,7 +487,7 @@ void PveClient::handleTicket(const Reply &r, bool renewal)
         m_userId = username;
     m_password.clear();
     m_tfaChallenge.clear();
-    m_ticketAge.start();
+    m_ticketTime = QDateTime::currentMSecsSinceEpoch();
     m_renewTimer.start(m_renewAfterMs);
 
     if (renewal) {
@@ -480,7 +521,7 @@ void PveClient::expire(const QString &message)
     emit sessionExpired();
 }
 
-void PveClient::flushPending(bool ok)
+void PveClient::flushPending(bool ok, const QString &error)
 {
     const QList<Pending> pending = m_pending;
     m_pending.clear();
@@ -489,16 +530,23 @@ void PveClient::flushPending(bool ok)
             call(p.method, p.path, p.fields, p.callback);
         } else if (p.callback) {
             Reply r;
-            r.error = m_errorString.isEmpty() ? tr("Not connected") : m_errorString;
+            r.error = !error.isEmpty() ? error
+                    : m_errorString.isEmpty() ? tr("Not connected") : m_errorString;
             p.callback(r);
         }
     }
 }
 
+qint64 PveClient::ticketAge() const
+{
+    return m_ticketTime > 0 ? QDateTime::currentMSecsSinceEpoch() - m_ticketTime : 0;
+}
+
 void PveClient::clearCredentials()
 {
+    ++m_generation;
     m_renewTimer.stop();
-    m_ticketAge.invalidate();
+    m_ticketTime = 0;
     m_renewing = false;
     m_password.clear();
     m_tokenSecret.clear();

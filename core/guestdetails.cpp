@@ -136,6 +136,8 @@ QString GuestDetails::errorString() const
 
 void GuestDetails::refresh()
 {
+    // Replies to requests already running would be older than this one.
+    ++m_generation;
     fetchStatus(true);
 }
 

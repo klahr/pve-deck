@@ -10,6 +10,9 @@ ApplicationWindow {
     cover: Qt.resolvedUrl("cover/CoverPage.qml")
     allowedOrientations: defaultAllowedOrientations
 
+    // Set by the cover: true while it is shown on the home screen.
+    property bool coverActive
+
     LoginFlow { }
 
     GuestStatus { id: guestStatus }
@@ -54,11 +57,13 @@ ApplicationWindow {
         }
     }
 
-    // Guest lists refresh every 5 s while the app is in front; in the
-    // background only the cover needs them, once a minute.
+    // Guest lists refresh every 5 s while the app is in front, once a
+    // minute while only the cover shows them, and not at all otherwise
+    // (screen off, cover out of view).
     Binding {
         target: sessionManager
         property: "pollInterval"
-        value: Qt.application.state === Qt.ApplicationActive ? 5000 : 60000
+        value: Qt.application.state === Qt.ApplicationActive ? 5000
+                                                             : appWindow.coverActive ? 60000 : 0
     }
 }

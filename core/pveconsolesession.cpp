@@ -130,8 +130,10 @@ void PveConsoleSession::open()
               << qMakePair(QStringLiteral("vncticket"), self->m_ticket);
         url.setQuery(QString::fromLatin1(Pve::formEncode(query)), QUrl::StrictMode);
 
-        if (self->m_socket)
+        if (self->m_socket) {
+            self->m_socket->disconnect(self);
             self->m_socket->deleteLater();
+        }
         self->m_socket = new WebSocketClient(self);
         connect(self->m_socket, &WebSocketClient::opened, self, &PveConsoleSession::onOpened);
         connect(self->m_socket, &WebSocketClient::messageReceived, self,
@@ -148,10 +150,14 @@ void PveConsoleSession::close()
     m_ping.stop();
     m_pendingInput.clear();
     if (m_socket) {
-        m_socket->disconnect(this);
-        m_socket->close();
-        m_socket->deleteLater();
+        WebSocketClient *socket = m_socket;
         m_socket = nullptr;
+        socket->disconnect(this);
+        // Outlive this session so the close frame gets out; the client is
+        // deleted once the server has ended the connection or the close timed out.
+        socket->setParent(nullptr);
+        connect(socket, &WebSocketClient::closed, socket, &QObject::deleteLater);
+        socket->close();
     }
     if (state() != Idle)
         setState(Closed);

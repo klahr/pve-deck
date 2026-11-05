@@ -41,7 +41,7 @@ Column {
     }
 
     function valueText(key, i) {
-        if (!history)
+        if (!history || history.count === 0)
             return "–"
         var v = i >= 0 ? history.valueAt(key, i) : history.latest(key)
         return isNaN(v) ? "–" : format(v)

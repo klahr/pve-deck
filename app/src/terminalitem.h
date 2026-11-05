@@ -114,6 +114,7 @@ private:
     qreal m_ascent = 0;
     int m_scrollOffset = 0;
     int m_lastScrollback = 0;
+    int m_lastDropped = 0;
     bool m_ctrlLatched = false;
     bool m_altLatched = false;
     bool m_ctrlLocked = false;

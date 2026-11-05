@@ -65,6 +65,9 @@ public:
 
     void setScrollbackLimit(int lines);
     int scrollbackSize() const;
+    // Lines ever dropped from the oldest end of the scrollback, so views
+    // can keep their place once it is full.
+    int droppedLines() const;
 
     // Terminal output from the backend.
     void feed(const QByteArray &data);
@@ -107,6 +110,7 @@ private:
     VTermScreen *m_screen = nullptr;
     QList<QVector<VTermScreenCell> > m_scrollback;   // last is newest
     int m_scrollbackLimit = 1000;
+    int m_droppedLines = 0;
     Rgb m_defaultFg;
     Rgb m_defaultBg;
     int m_cursorRow = 0;

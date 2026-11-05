@@ -61,6 +61,7 @@ private:
     bool parseHandshake();
     void parseFrames();
     void send(int opcode, const QByteArray &payload);
+    void startCloseTimeout();
     void fail(const QString &error);
 
     QPointer<QTcpSocket> m_socket;
@@ -72,7 +73,7 @@ private:
     QByteArray m_key;
     QByteArray m_buffer;
     QByteArray m_message;
-    int m_messageOpcode = 0;
+    int m_messageOpcode = 0;    // of the message being reassembled, 0 if none
     bool m_closedEmitted = false;
 };
 

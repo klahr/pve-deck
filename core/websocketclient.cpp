@@ -2,11 +2,12 @@
 #include "websocketclient.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
+#include <QFile>
 #include <QSslSocket>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QtEndian>
-
-#include <random>
 
 #include "formencoding.h"
 
@@ -16,14 +17,27 @@ const QByteArray Guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 // Headers and frames larger than this mean something is wrong.
 const qint64 MaxHandshake = 16 * 1024;
 const quint64 MaxFrame = 16 * 1024 * 1024;
+// How long to wait for the server to end the connection after a close.
+const int CloseTimeoutMs = 5000;
 
+// std::random_device can be a fixed-seed generator in some C++ libraries.
 QByteArray randomBytes(int n)
 {
-    static std::random_device device;
-    QByteArray out(n, Qt::Uninitialized);
-    for (int i = 0; i < n; ++i)
-        out[i] = static_cast<char>(device() & 0xff);
-    return out;
+    QFile urandom(QStringLiteral("/dev/urandom"));
+    if (urandom.open(QIODevice::ReadOnly)) {
+        const QByteArray out = urandom.read(n);
+        if (out.size() == n)
+            return out;
+    }
+    // Not expected on Linux; the key only needs to be unpredictable.
+    QByteArray seed = QByteArray::number(QDateTime::currentMSecsSinceEpoch())
+            + QByteArray::number(qrand());
+    QByteArray out;
+    while (out.size() < n) {
+        seed = QCryptographicHash::hash(seed, QCryptographicHash::Sha256);
+        out += seed;
+    }
+    return out.left(n);
 }
 
 } // namespace
@@ -58,22 +72,22 @@ void WebSocketClient::open(const QUrl &url, const Headers &headers, const QByteA
     m_pinned = pinnedFingerprint;
     m_buffer.clear();
     m_message.clear();
+    m_messageOpcode = 0;
     m_closedEmitted = false;
     m_state = Connecting;
 
     const bool tls = url.scheme() == QLatin1String("wss");
     const int port = url.port(tls ? 443 : 80);
+    QSslSocket *ssl = nullptr;
     if (tls) {
-        QSslSocket *ssl = new QSslSocket(this);
+        ssl = new QSslSocket(this);
         m_socket = ssl;
         connect(ssl, &QSslSocket::encrypted, this, &WebSocketClient::onConnected);
         connect(ssl, static_cast<void (QSslSocket::*)(const QList<QSslError> &)>(&QSslSocket::sslErrors),
                 this, &WebSocketClient::onSslErrors);
-        ssl->connectToHostEncrypted(url.host(), port);
     } else {
         m_socket = new QTcpSocket(this);
         connect(m_socket.data(), &QTcpSocket::connected, this, &WebSocketClient::onConnected);
-        m_socket->connectToHost(url.host(), port);
     }
     QTcpSocket *socket = m_socket;
     connect(socket, &QTcpSocket::readyRead, this, &WebSocketClient::onReadyRead);
@@ -88,6 +102,11 @@ void WebSocketClient::open(const QUrl &url, const Headers &headers, const QByteA
         else
             fail(socket->errorString());
     });
+    // Connect only now: a failure can be reported before connectToHost returns.
+    if (ssl)
+        ssl->connectToHostEncrypted(url.host(), port);
+    else
+        socket->connectToHost(url.host(), port);
 }
 
 void WebSocketClient::sendText(const QByteArray &utf8)
@@ -107,6 +126,7 @@ void WebSocketClient::close()
         m_state = Closing;
         if (m_socket)
             m_socket->disconnectFromHost();
+        startCloseTimeout();
     } else if (m_state == Connecting) {
         fail(QString());
     }
@@ -157,7 +177,8 @@ void WebSocketClient::onConnected()
         path += '?' + m_url.query(QUrl::FullyEncoded).toLatin1();
 
     QByteArray request = "GET " + path + " HTTP/1.1\r\n";
-    request += "Host: " + m_url.host().toLatin1();
+    const QByteArray host = m_url.host(QUrl::FullyEncoded).toLatin1();
+    request += "Host: " + (host.contains(':') ? '[' + host + ']' : host);
     if (m_url.port() > 0)
         request += ':' + QByteArray::number(m_url.port());
     request += "\r\n";
@@ -241,6 +262,16 @@ void WebSocketClient::parseFrames()
         const bool fin = b0 & 0x80;
         const int opcode = b0 & 0x0f;
         const bool masked = b1 & 0x80;
+        // No extensions were negotiated, and servers must not mask.
+        if ((b0 & 0x70) || masked) {
+            fail(tr("Invalid WebSocket frame"));
+            return;
+        }
+        // Control frames are short and never fragmented.
+        if ((opcode & 0x8) && (!fin || (b1 & 0x7f) > 125)) {
+            fail(tr("Invalid WebSocket frame"));
+            return;
+        }
         quint64 len = b1 & 0x7f;
         int header = 2;
         if (len == 126) {
@@ -282,17 +313,30 @@ void WebSocketClient::parseFrames()
             m_state = Closing;
             if (m_socket)
                 m_socket->disconnectFromHost();
+            startCloseTimeout();
             return;
         case Text:
         case Binary:
         case Continuation:
+            // A continuation needs a message to continue, and a new message
+            // can't start inside another one.
+            if ((opcode == Continuation) != (m_messageOpcode != 0)) {
+                fail(tr("Invalid WebSocket frame"));
+                return;
+            }
             if (opcode != Continuation)
                 m_messageOpcode = opcode;
+            if (static_cast<quint64>(m_message.size() + payload.size()) > MaxFrame) {
+                fail(tr("WebSocket message too large"));
+                return;
+            }
             m_message += payload;
             if (fin) {
                 const QByteArray message = m_message;
+                const bool text = m_messageOpcode == Text;
                 m_message.clear();
-                emit messageReceived(message, m_messageOpcode == Text);
+                m_messageOpcode = 0;
+                emit messageReceived(message, text);
             }
             break;
         default:
@@ -307,6 +351,15 @@ void WebSocketClient::send(int opcode, const QByteArray &payload)
     if (!m_socket || (m_state != Open && !(m_state == Closing && opcode == Close)))
         return;
     m_socket->write(frame(opcode, payload, true));
+}
+
+void WebSocketClient::startCloseTimeout()
+{
+    // A server that never ends the connection must not keep it open.
+    QTimer::singleShot(CloseTimeoutMs, this, [this]() {
+        if (m_state == Closing)
+            fail(QString());
+    });
 }
 
 void WebSocketClient::fail(const QString &error)

@@ -82,6 +82,11 @@ bool PowerActions::run(const QString &profileId, const QString &node, const QStr
         return false;
     m_busy.insert(key);
     emit busyGuestsChanged();
+    // A server removed mid-action never answers: don't leave the guest busy.
+    connect(client, &QObject::destroyed, this, [this, key]() {
+        if (m_busy.remove(key))
+            emit busyGuestsChanged();
+    });
 
     QPointer<PowerActions> self(this);
     const QString path = QStringLiteral("/nodes/%1/%2/%3/status/%4").arg(node, type).arg(vmid).arg(action);

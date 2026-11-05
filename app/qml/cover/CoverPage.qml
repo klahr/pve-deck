@@ -4,6 +4,13 @@ import Sailfish.Silica 1.0
 CoverBackground {
     readonly property int connectedCount: sessionManager.connectedIds.length
 
+    onStatusChanged: {
+        appWindow.coverActive = status === Cover.Active
+        // Polling stops while the cover is out of view; catch up at once.
+        if (status === Cover.Active)
+            sessionManager.refreshAll()
+    }
+
     Column {
         anchors.centerIn: parent
         width: parent.width - 2 * Theme.paddingLarge

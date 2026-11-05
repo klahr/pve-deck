@@ -586,6 +586,33 @@ private slots:
         QCOMPARE(tickets.at(1).form.value(QStringLiteral("password")), Ticket1);
     }
 
+    void renewalFailureKeepsSession()
+    {
+        PveClient client;
+        client.setEndpoint(QStringLiteral("127.0.0.1"), m_server->serverPort(), false);
+        client.setTicketTimings(100, 60000);
+        QSignalSpy connectedSpy(&client, SIGNAL(connected()));
+        QSignalSpy expiredSpy(&client, SIGNAL(sessionExpired()));
+        client.loginWithPassword(QStringLiteral("root@pam"), QStringLiteral("secret"));
+        QVERIFY(connectedSpy.wait());
+        QTRY_VERIFY(!client.serverVersion().isEmpty());
+
+        // The renewal fails, but not because the ticket was rejected.
+        m_server->handler = [this](const MockPveServer::Request &r) {
+            if (r.path == QLatin1String("/api2/json/access/ticket"))
+                return MockPveServer::Response::error(500, "Internal error");
+            return m_fake.handle(r);
+        };
+        QTest::qWait(150);
+        bool done = false;
+        PveClient::Reply reply;
+        client.get(QStringLiteral("/version"), [&](const PveClient::Reply &r) { reply = r; done = true; });
+        QTRY_VERIFY(done);
+        QVERIFY(!reply.ok);
+        QCOMPARE(expiredSpy.count(), 0);
+        QCOMPARE(client.state(), PveClient::Connected);
+    }
+
     void unauthorizedExpiresSession()
     {
         PveClient client;
@@ -1412,6 +1439,14 @@ private slots:
         screen.setSize(4, 10);
         QCOMPARE(screen.scrollbackSize(), 1);
         QCOMPARE(screen.lineText(0), QStringLiteral("2"));
+
+        // A full scrollback drops its oldest line for each new one.
+        const int dropped = screen.droppedLines();
+        screen.setScrollbackLimit(1);
+        screen.feed("\r\n6");
+        QCOMPARE(screen.scrollbackSize(), 1);
+        QCOMPARE(screen.droppedLines(), dropped + 1);
+        QCOMPARE(screen.lineText(-1), QStringLiteral("2"));
 
         screen.setScrollbackLimit(0);
         QCOMPARE(screen.scrollbackSize(), 0);

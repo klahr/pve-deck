@@ -3,7 +3,6 @@
 #define PVEDECK_PVECLIENT_H
 
 #include <QDateTime>
-#include <QElapsedTimer>
 #include <QJsonValue>
 #include <QList>
 #include <QObject>
@@ -142,7 +141,8 @@ private:
     void handleTicket(const Reply &reply, bool renewal);
     void finishLogin();
     void expire(const QString &message);
-    void flushPending(bool ok);
+    void flushPending(bool ok, const QString &error = QString());
+    qint64 ticketAge() const;
     void clearCredentials();
     void setState(State state);
     void setErrorString(const QString &error);
@@ -164,11 +164,14 @@ private:
     QString m_serverVersion;
     QString m_errorString;
 
-    QElapsedTimer m_ticketAge;
+    // Wall-clock time: a monotonic timer stops while the phone sleeps.
+    qint64 m_ticketTime = 0;
     QTimer m_renewTimer;
     int m_renewAfterMs;
     int m_lifetimeMs;
     bool m_renewing = false;
+    // Bumped when credentials change, so replies from an earlier login are ignored.
+    int m_generation = 0;
     QList<Pending> m_pending;
 
     // Certificate seen in the last failed handshake.
